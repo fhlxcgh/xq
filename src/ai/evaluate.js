@@ -1,4 +1,4 @@
-import { getAllLegalMoves, sideOf } from '../game/rules.js';
+import { getAllLegalMoves, getPseudoLegalMoves, locateKing, sideOf } from '../game/rules.js';
 
 const PIECE_VALUES = {
   k: 10000,
@@ -50,6 +50,71 @@ function boardIndexForSide(side, row) {
   return side === 'red' ? row : 9 - row;
 }
 
+function enemyOf(side) {
+  return side === 'red' ? 'black' : 'red';
+}
+
+function isSquareAttackedBy(board, row, col, attackerSide) {
+  for (let r = 0; r < board.length; r += 1) {
+    for (let c = 0; c < board[r].length; c += 1) {
+      const piece = board[r][c];
+      if (!piece || sideOf(piece) !== attackerSide) continue;
+      const moves = getPseudoLegalMoves(board, r, c);
+      if (moves.some(([targetRow, targetCol]) => targetRow === row && targetCol === col)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function exposedPiecePenalty(state, perspective) {
+  const enemy = enemyOf(perspective);
+  let penalty = 0;
+
+  for (let row = 0; row < state.board.length; row += 1) {
+    for (let col = 0; col < state.board[row].length; col += 1) {
+      const piece = state.board[row][col];
+      if (!piece || sideOf(piece) !== perspective) continue;
+      if (!isSquareAttackedBy(state.board, row, col, enemy)) continue;
+
+      const value = PIECE_VALUES[piece[1]];
+      const weight = piece[1] === 'r' ? 0.32 : piece[1] === 'c' || piece[1] === 'n' ? 0.24 : 0.12;
+      penalty += Math.floor(value * weight);
+    }
+  }
+
+  return penalty;
+}
+
+function kingSafetyScore(state, perspective) {
+  const king = locateKing(state.board, perspective);
+  if (!king) return -50000;
+
+  const enemy = enemyOf(perspective);
+  const [row, col] = king;
+  let score = 0;
+
+  if (isSquareAttackedBy(state.board, row, col, enemy)) {
+    score -= 220;
+  }
+
+  for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const nextRow = row + dr;
+    const nextCol = col + dc;
+    const guard = state.board[nextRow]?.[nextCol];
+    if (guard && sideOf(guard) === perspective) {
+      score += 14;
+    }
+  }
+
+  if (!state.board[row + (perspective === 'red' ? -1 : 1)]?.[col]) {
+    score -= 18;
+  }
+
+  return score;
+}
+
 export function evaluateBoard(state, perspective = state.currentSide) {
   let score = 0;
 
@@ -73,7 +138,13 @@ export function evaluateBoard(state, perspective = state.currentSide) {
   state.currentSide = current;
 
   score += (myMobility - oppMobility) * 2;
+  score += kingSafetyScore(state, perspective);
+  score -= exposedPiecePenalty(state, perspective);
+  score -= kingSafetyScore(state, perspective === 'red' ? 'black' : 'red');
+  score += exposedPiecePenalty(state, perspective === 'red' ? 'black' : 'red');
   if (state.winner === perspective) score += 50000;
   if (state.winner && state.winner !== perspective) score -= 50000;
   return score;
 }
+
+export { PIECE_VALUES };
