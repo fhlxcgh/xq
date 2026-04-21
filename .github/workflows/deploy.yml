@@ -11,32 +11,14 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.SERVER_IP }}
-          username: ${{ vars.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          script: |
-            echo "=== 开始部署 ==="
-            echo "当前用户: $(whoami)"
-            echo "主机名: $(hostname)"
-            echo "工作目录: $(pwd)"
-
-            # 部署目录
-            DEPLOY_PATH="/var/www/blog"
-
-            # 创建目录（如果不存在）
-            mkdir -p $DEPLOY_PATH
-
-            # 同步文件到服务器
-            rsync -avz --delete \
-              --exclude='.git' \
+        run: |
+          tar --exclude='.git' \
               --exclude='.github' \
               --exclude='node_modules' \
-              -e "ssh -o StrictHostKeyChecking=no" \
-              ./ $DEPLOY_PATH/
+              --exclude='.gitignore' \
+              --exclude='*.md' \
+              -czf - . | ssh -o StrictHostKeyChecking=no -p 22 ${{ vars.SERVER_USER }}@${{ vars.SERVER_IP }} "mkdir -p /var/www/blog && rm -rf /var/www/blog/* && tar -xzf - -C /var/www/blog"
 
-            echo "=== 部署完成 ==="
-            echo "部署路径: $DEPLOY_PATH"
-            ls -la $DEPLOY_PATH
+      - name: Verify deployment
+        run: |
+          ssh -o StrictHostKeyChecking=no -p 22 ${{ vars.SERVER_USER }}@${{ vars.SERVER_IP }} "ls -la /var/www/blog && echo '=== 部署验证完成 ==='"
