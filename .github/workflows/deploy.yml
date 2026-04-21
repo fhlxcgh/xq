@@ -10,6 +10,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H -p 22 ${{ vars.SERVER_IP }} >> ~/.ssh/known_hosts 2>/dev/null
+
       - name: Deploy to VPS
         run: |
           tar --exclude='.git' \
